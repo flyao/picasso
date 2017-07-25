@@ -26,6 +26,8 @@ class SaliencyMaps(BaseVisualization):
 
     REFERENCE_LINK = 'https://arxiv.org/pdf/1312.6034'
 
+    ALLOWED_SETTINGS = {'Transparency': ['0.0', '0.25', '0.5', '0.75']}
+
     def __init__(self, model, logit_tensor_name=None):
         super(SaliencyMaps, self).__init__(model)
         if logit_tensor_name:
@@ -50,7 +52,24 @@ class SaliencyMaps(BaseVisualization):
                                 self.model.tf_input_var,
                                 name=gradient_name)[0]
 
+    def update_settings(self, settings):
+        def error_string(setting, setting_val):
+            return ('{val} is not an acceptable value for '
+                    'parameter {param} for visualization'
+                    '{vis}.').format(val=setting_val,
+                                     param=setting,
+                                     vis=self.__class__.__name__)
+
+        if 'Transparency' in settings:
+            if settings['Transparency'] in self.ALLOWED_SETTINGS['Transparency']:
+                self.transparency = float(settings['Transparency'])
+            else:
+                raise ValueError(error_string(settings['Transparency'],
+                                              'Transparency'))
+
     def make_visualization(self, inputs, output_dir, settings=None):
+        if settings:
+            self.update_settings(settings)
 
         pre_processed_arrays = self.model.preprocess([example['data']
                                                      for example in inputs])
@@ -87,19 +106,24 @@ class SaliencyMaps(BaseVisualization):
             output_images = output_arrays.reshape([-1] + self.input_shape[0:2])
 
             output_fns = []
-            for j, image in enumerate(output_images):
+            for j, output_image in enumerate(output_images):
                 output_fn = '{fn}-{j}-{ts}.png'.format(ts=str(time.time()),
                                                        j=j,
                                                        fn=inp['filename'])
 
                 if i == 0 and j == 0:
-                    im = pyplot.imshow(image,
-                                       cmap='Greys_r')
+                    pyplot.imshow(inputs[i]['data']
+                                  .resize(output_image.shape)
+                                  .convert('RGB'),
+                                  alpha=self.transparency)
+                    im = pyplot.imshow(output_image,
+                                       alpha=1. - self.transparency,
+                                       cmap='inferno')
                     pyplot.axis('off')
                     im.axes.get_xaxis().set_visible(False)
                     im.axes.get_yaxis().set_visible(False)
                 else:
-                    im.set_data(image)
+                    im.set_data(output_image)
 
                 pyplot.savefig(os.path.join(output_dir, output_fn),
                                bbox_inches='tight', pad_inches=0)
